@@ -12,4 +12,4 @@ https://chrome.google.com/webstore/detail/better-youtube-replies/mkckdflcdohccnp
 5. Many users do not use reply button so you can not tell who they are replying to
 
 # Bugs
-1. Can only load 200 replies or so before page begins to lag
+1. Limited to first 200 replies because if any more load than page begins to lag
