@@ -6,12 +6,21 @@ Better Youtube Replies:
     threads to allow users to hide and show conversations so that they can get to
     the conversations that they want to read.
 Bugs:
-    1. Sometimes extension does not trigger and page has to be reloaded
-    2. Opening very large threads causes page to slow down
+    1.  Can only load 200 replies or so before page begins to lag
 Defects:
-    1. Can not detect replies when author changes their name
-    2. Replies only load 10 at a time
-    3. Many users do not use reply button
+    1.  Can not create threads properly when author changes their name or reply
+        gets deleted
+    2.  Replies only load 10 at a time
+    3.  Many users do not use reply button so you can not tell who they are replying to
+    4.  Buttons are updated at an interval instead of detecting DOM change
+    5.  Rant: This code has a lot of funtions. One of the advantages is that method names 
+        are self-documenting, so less comments are necessary, which means that comments 
+        don't need to be updated as much. However, it is hard to follow the line of reasoning
+        through the code. I would consider refactoring some of the functions such that they 
+        are nested functions inside of the functions calling them. This would make it easier 
+        to follow the sequence of events through the code. However, I would have to be careful 
+        with spacing and comments so legibility of the functions does not suffer. I also need to 
+        make sure that I don't lose the self-documenting nature of good functions.
 */
 
 var buttonMap = new Map(); //stores buttons so they can be accessed more quickly
