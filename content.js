@@ -1,34 +1,113 @@
 /*
 Better Youtube Replies:
-    When the user opens a replies thread, the mutation observer is triggered.
-    Then the code takes the replies as input and converts them into threads that 
-    make the conversation easier to follow. In addition, it adds buttons into these
-    threads to allow users to hide and show conversations so that they can get to
+    This extension makes YouTube replies easier to follow. First it sorts the replies 
+    based on how many likes the comment has. Then it organizes the replies into threads 
+    that make it easy to see who is replying to who. In addition, it adds buttons into 
+    these threads to allow users to hide and show conversations so that they can get to 
     the conversations that they want to read.
-Bugs:
-    1.  Can only load 200 replies or so before page begins to lag
+    
 Defects:
     1.  Can not create threads properly when author changes their name or reply
         gets deleted
-    2.  Replies only load 10 at a time
+    2.  Replies only load 10 at a time so it takes a while to load large reply threads
     3.  Many users do not use reply button so you can not tell who they are replying to
     4.  Buttons are updated at an interval instead of detecting DOM change
-    5.  Rant: This code has a lot of funtions. One of the advantages is that method names 
-        are self-documenting, so less comments are necessary, which means that comments 
-        don't need to be updated as much. However, it is hard to follow the line of reasoning
-        through the code. I would consider refactoring some of the functions such that they 
-        are nested functions inside of the functions calling them. This would make it easier 
-        to follow the sequence of events through the code. However, I would have to be careful 
-        with spacing and comments so legibility of the functions does not suffer. I also need to 
-        make sure that I don't lose the self-documenting nature of good functions.
+    5.  Page lags slightly when loading large reply threads
 */
 
-var buttonMap = new Map(); //stores buttons so they can be accessed more quickly
-var commentsMap = new Map(); //stores original order of comments for creating threads
-var hiddenThreadMap = new Map(); 
+//Store types for quick access
+var buttonMap = new Map();
+var commentMap = new Map();
+var hiddenThreadMap = new Map();
 
-//thread objects are nested inside eachother, so to access all of them I recursively
-//get its children inorder to print them
+//Detect when user opens a replies thread
+var childList = {subtree: true, childList: true}
+MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
+var observer = new MutationObserver(detectReplies);
+observer.observe(document, childList);
+
+//Buttons have to be updated when element height changes
+setInterval(updateButtons, 200);
+
+//Starts program when user has opened a replies thread and then opens 
+function detectReplies(mutationsList, observer){
+    for(var mutation of mutationsList){
+        if(mutation.target.id == "loaded-replies" && mutation.addedNodes.length){
+            observer.disconnect(); 
+            observer.takeRecords();
+            createThreads(mutation);
+            observer.observe(document, childList);
+            getMoreReplies(mutation.target);
+        }
+    }
+}
+
+//Logic necessary to create the threads
+function createThreads(repliesMutation){
+    var replies = repliesMutation.target;
+    var storedReplies = storeReplies(repliesMutation);
+    var threads = Threads(storedReplies);
+    threads = organizeThreads(threads);
+    threads = getTopLevelThreads(threads);
+    threads = sortThreads(threads);
+    createButtons(threads);
+    replaceReplies(replies, threads);
+}
+
+//replies are stored so that the original ordering can be used for sorting when newReplies arrive
+function storeReplies(repliesMutation){
+    var replies = repliesMutation.target;
+    var newReplies = Array.prototype.slice.call(repliesMutation.addedNodes);
+    var oldReplies = [];
+    if(commentMap.has(replies)) oldReplies = commentMap.get(replies);
+    commentMap.set(replies, oldReplies.concat(newReplies));
+    return commentMap.get(replies);
+}
+
+//thread objects are used to keep track of which threads are replying to which threads
+function Threads(replies){
+    var threads = [];
+    for(var i=0; i<replies.length; i++){
+        var thread = {
+            node: replies[i],
+            numParents: 0,
+            children: []
+        }
+        threads.push(thread);
+    }
+    return threads;
+}
+
+//Only top level threads are necessary since other threads are nested in the structure
+function getTopLevelThreads(threads){
+    var newThreads = [];
+    for(var i=0; i<threads.length; i++){
+        if(threads[i].numParents == 0){
+            newThreads.push(threads[i]);
+        }
+    }
+    return newThreads;
+}
+
+//for each thread finds all of its children and indents them
+function organizeThreads(threads){
+    for(var child=0; child<threads.length; child++){
+        var childText = getText(threads[child].node);
+
+        for(var parent=child-1; parent>=0; parent--){
+            var parentAuthor = getAuthor(threads[parent].node);
+
+            if(childText.includes(parentAuthor) && threads[child].numParents == 0){
+                threads[child].numParents = threads[parent].numParents+1;
+                threads[child].node.style.marginLeft = (35 * threads[child].numParents) + "px";
+                threads[parent].children.push(threads[child]);
+            }
+        }
+    }
+    return threads;
+}
+
+//thread objects are nested inside each other, they must be converted into list for printing
 function getPrintOrder(threads){
     var printOrder = [];
     for(var curr=0; curr<threads.length; curr++){
@@ -42,13 +121,18 @@ function getPrintOrder(threads){
 
 //in order to re-order children the must be removed and added in the correct order
 function replaceReplies(replies, threads){
-    while(replies.firstChild){
-        replies.removeChild(replies.firstChild);
-    }
     var printOrder = getPrintOrder(threads);
-	for(var i = 0; i < printOrder.length; i++){
-        replies.appendChild(printOrder[i].node);
-	}
+    var p=0, r=0;
+    while(p < printOrder.length){
+        if(replies.children[r].className == "displayBtn"){
+            r++; continue;
+        }
+        if(replies.children[r] != printOrder[p].node){
+            replies.removeChild(printOrder[p].node);
+            replies.insertBefore(printOrder[p].node, replies.children[r]);
+        }
+        p++;r++;
+    }
 }
 
 //likes are used to sort reply threads
@@ -81,56 +165,12 @@ function getText(reply){
     return reply.querySelector("#content-text").outerText;
 }
 
-//thread objects are used to keep track of which threads are replying to which threads
-function Threads(replies){
-    var threads = [];
-    for(var i=0; i<replies.length; i++){
-        var thread = {
-            node: replies[i],
-            numParents: 0,
-            children: []
-        }
-        threads.push(thread);
-    }
-    return threads;
-}
 
-//returns threads list which contains only the top level threads, the other threads are redundant
-//because they are nested inside other threads
-function getTopLevelThreads(threads){
-    var newThreads = [];
-    for(var i=0; i<threads.length; i++){
-        if(threads[i].numParents == 0){
-            newThreads.push(threads[i]);
-        }
-    }
-    return newThreads;
-}
-
-//for each thread finds all of its children and indents them
-function organizeThreads(threads){
-    for(var child=0; child<threads.length; child++){
-        var childText = getText(threads[child].node);
-
-        for(var parent=child-1; parent>=0; parent--){
-            var parentAuthor = getAuthor(threads[parent].node);
-
-            if(childText.includes(parentAuthor) && threads[child].numParents == 0){
-                threads[child].numParents = threads[parent].numParents+1;
-                threads[child].node.style.marginLeft = (40 * threads[child].numParents) + "px";
-                threads[parent].children.push(threads[child]);
-            }
-        }
-    }
-    return threads;
-}
 
 //the more replies button needs to be repetedly clicked to get the replies 10 at a time
 function getMoreReplies(replies){
-    if(commentsMap.get(replies).length < 200){
-        var moreReplies = replies.parentElement.parentElement.querySelector("yt-next-continuation > paper-button");
-        moreReplies.click();
-    }
+    var moreReplies = replies.parentElement.parentElement.querySelector("yt-next-continuation > paper-button");
+    if(moreReplies) moreReplies.click();
 }
 
 //when display button is clicked, the thread and all of its children have to be displayed
@@ -151,9 +191,11 @@ function expandThread(event){
 
 //display button is used to reveal comments that have been hidden by the threadbtn
 function newDisplayButton(thread){
+    console.log(thread);
     var button = document.createElement("span");
     var text = document.createTextNode("<" + getAuthor(thread.node) + " - " + getLikes(thread.node) + " likes>");
     button.appendChild(text);
+    button.className = "displayBtn"
     button.style.marginBottom = "8px";
     button.style.color = "#606060";
     button.style.marginLeft = thread.node.style.marginLeft;
@@ -177,8 +219,8 @@ function hideThread(thread){
 }
 
 //When thread button is clicked it hides the thread
-function collapseThread(event){
-    var thread = buttonMap.get(event.target);
+function collapseThread(clicked){
+    var thread = buttonMap.get(clicked);
     var displayButton = newDisplayButton(thread);
 
     observer.disconnect(); 
@@ -201,25 +243,29 @@ function getHeight(thread){
     return height;
 }
 
-//only creates one button per thread
+//only creates one button per threadf
 function newThreadButton(){
     var button = document.createElement("a");
     button.className = "threadBtn"
-    button.style.paddingLeft = "1.5px";
-    button.style.paddingRight = "1.5px";
-    button.style.background = "#DCDCDC";
-    button.style.zIndex = 3000;
     button.style.position = "absolute";
-    button.style.borderLeft = "10px solid white";
-    button.style.borderRight = "10px solid white";
-    button.onmouseover = function(){this.style.background = "#4e8de0";};
-    button.onmouseleave = function(){this.style.background = "#DCDCDC";};
-    button.onclick = function(event){collapseThread(event)};
+    button.style.paddingLeft = "10px";
+    button.style.borderRight = "2px solid #e0e0e0";
+    button.onmouseover = function(){this.style.borderRight = "2px solid #60a2ff";};
+    button.onmouseleave = function(){this.style.borderRight = "2px solid #e0e0e0";};
+    button.onclick = function(){collapseThread(button)};
+
+    var rightInput = document.createElement("a");
+    button.appendChild(rightInput);
+    rightInput.style.position = "absolute";
+    rightInput.style.paddingRight = "12px";
+    rightInput.style.height = "100%";
+    rightInput.onmouseover = function(){button.onmouseover;};
+    rightInput.onmouseleave = function(){button.onmouseleave;};
+
     return button;
 }
 
-//for each thread a button is created for astetic purposes
-//button is stored with thread so it can be easily accessed for updating btn
+//buttons necessary for hiding and displaying threads
 function createButtons(threadsList){
     for(var i=0; i<threadsList.length; i++){
         var thread = threadsList[i];
@@ -235,48 +281,10 @@ function createButtons(threadsList){
     }
 }
 
-//calls all thread methods necessary to create threads
-function createThreads(replies, storedReplies){
-    var threads = Threads(storedReplies);
-    threads = organizeThreads(threads);
-    threads = getTopLevelThreads(threads);
-    threads = sortThreads(threads);
-    createButtons(threads);
-    replaceReplies(replies, threads);
-}
-
-//replies are stored so the original ordering can be used, then creates threads
-function processReplies(repliesMutation){
-    var replies = repliesMutation.target;
-    var newReplies = Array.prototype.slice.call(repliesMutation.addedNodes);
-    var oldReplies = [];
-    if(commentsMap.has(replies)) oldReplies = commentsMap.get(replies);
-    commentsMap.set(replies, oldReplies.concat(newReplies));
-
-    createThreads(replies, commentsMap.get(replies));
-}
-
-//Detect when replies have loaded and pass on the new replies
-var childList = {subtree: true, childList: true}
-MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
-var observer = new MutationObserver(function(mutationsList, observer) {
-    for(var mutation of mutationsList){
-        if(mutation.target.id == "loaded-replies" && mutation.addedNodes.length){
-            observer.disconnect(); 
-            observer.takeRecords();
-            processReplies(mutation);
-            observer.observe(document, childList);
-            getMoreReplies(mutation.target);
-        }
-    }
-});
-observer.observe(document, childList);
-
 
 //client heights randomly change, so button heights have to be updated occasionally
-setInterval(updateButtons, 200);
 function updateButtons(){
-    buttonMap.forEach(function(value,key,map){
+    buttonMap.forEach(function(value,key,_){
         var button = key;
         var thread = value;
         if(button.className == "threadBtn"){

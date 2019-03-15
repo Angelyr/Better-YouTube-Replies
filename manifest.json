@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "Better Youtube Replies",
-	"version": "1.1",
+	"version": "1.2",
 	"author": "Angel Castillo",
 	"description": "This extension sorts youtube comments into easy to read threads.",
 	"content_scripts": [{
